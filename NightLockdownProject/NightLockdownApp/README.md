@@ -10,7 +10,7 @@ The core idea is simple: when you decide it is time to step away from your MacBo
 - Lets you start an immediate lockdown for 30 minutes
 - Quits and force-kills distracting apps
 - Turns off Wi-Fi during lockdown
-- Opens as a normal app window with clear controls
+- Gives you a full settings window when lockdown is not active
 
 ## Why You Might Use It
 
@@ -23,7 +23,6 @@ The core idea is simple: when you decide it is time to step away from your MacBo
 
 - **Start Lockdown (30 Minutes)** starts an immediate break session
 - the main window includes your recurring schedule, blocked apps, and check interval on the first screen
-- **Pause for 30 Minutes / Resume** gives you a temporary escape hatch
 - **Open Raw Config File** is available if you want to edit the JSON directly
 - **Reload Config** reloads settings from disk
 
@@ -35,9 +34,10 @@ During an active lockdown window, the app can:
 - quit apps like browsers, chat apps, mail, music, games, or anything else you add to the blocked list
 - force-kill stubborn apps that do not quit cleanly
 - lock the screen so you have to consciously come back later
+- hide its main controls so you cannot simply reopen the app and change settings mid-lockdown
 
 Closing the app window does not stop enforcement. The app continues running until you quit it.
-If you close the window, the app moves into the macOS menu bar so you can bring it back quickly.
+If you close the window, the app moves into the macOS menu bar. When lockdown is active, the menu bar item shows status only and does not expose settings or quit controls.
 
 ## Build
 

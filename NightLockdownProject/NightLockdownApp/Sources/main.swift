@@ -765,7 +765,6 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
     private let appName = "Lockdown Ready"
     private let manualLockDuration: TimeInterval = 30 * 60
     private var timer: Timer?
-    private var pauseUntil: Date?
     private var manualLockUntil: Date?
     private var hasLockedInCurrentWindow = false
     private var mainWindow: NSWindow?
@@ -773,7 +772,6 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
     private var statusItem: NSStatusItem?
     private let stateLabel = NSTextField(labelWithString: "")
     private let detailLabel = NSTextField(wrappingLabelWithString: "")
-    private let pauseButton = NSButton(title: "", target: nil, action: nil)
 
     private lazy var configURL: URL = {
         let fm = FileManager.default
@@ -801,6 +799,12 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         configureMainWindow()
         runEnforcementCycle(trigger: "startup")
         startScheduler()
+        if isLockdownActive(now: Date()) {
+            ensureStatusItem()
+            updateStatusItem()
+        } else {
+            showMainWindow()
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -866,10 +870,6 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
             bezelColor: NSColor.systemRed
         )
 
-        pauseButton.target = self
-        pauseButton.action = #selector(togglePause)
-        styleButton(pauseButton, bezelColor: NSColor.systemOrange)
-
         let saveButton = makeActionButton(
             title: "Save Settings",
             action: #selector(saveSettings),
@@ -900,14 +900,14 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         heroStack.spacing = 12
         heroStack.translatesAutoresizingMaskIntoConstraints = false
 
-        let primaryActions = NSStackView(views: [startButton, pauseButton, saveButton])
+        let primaryActions = NSStackView(views: [startButton, saveButton, reloadButton])
         primaryActions.orientation = .horizontal
         primaryActions.alignment = .centerY
         primaryActions.distribution = .fillEqually
         primaryActions.spacing = 12
         primaryActions.translatesAutoresizingMaskIntoConstraints = false
 
-        let secondaryActions = NSStackView(views: [reloadButton, openConfigButton, quitButton])
+        let secondaryActions = NSStackView(views: [openConfigButton, quitButton])
         secondaryActions.orientation = .horizontal
         secondaryActions.alignment = .centerY
         secondaryActions.distribution = .fillEqually
@@ -996,10 +996,18 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         ])
 
         rebuildMenu()
-        showMainWindow()
     }
 
     private func showMainWindow() {
+        let now = Date()
+        if isLockdownActive(now: now) {
+            ensureStatusItem()
+            updateStatusItem(now: now)
+            mainWindow?.orderOut(nil)
+            lockScreen()
+            return
+        }
+
         NSApp.activate(ignoringOtherApps: true)
         mainWindow?.makeKeyAndOrderFront(nil)
         removeStatusItem()
@@ -1018,13 +1026,7 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         let detail: String
         let color: NSColor
 
-        if let pauseUntil, now < pauseUntil {
-            let fmt = RelativeDateTimeFormatter()
-            fmt.unitsStyle = .short
-            title = "LOCKDOWN PAUSED"
-            detail = "Paused until \(fmt.localizedString(for: pauseUntil, relativeTo: now)).\n\(scheduleSummary())"
-            color = .systemOrange
-        } else if let manualLockUntil, now < manualLockUntil {
+        if let manualLockUntil, now < manualLockUntil {
             let fmt = RelativeDateTimeFormatter()
             fmt.unitsStyle = .short
             title = "LOCKED NOW"
@@ -1043,7 +1045,6 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         stateLabel.stringValue = title
         stateLabel.textColor = color
         detailLabel.stringValue = detail
-        pauseButton.title = pauseUntil == nil ? "Pause for 30 Minutes" : "Resume Immediately"
         updateStatusItem(now: now)
     }
 
@@ -1069,10 +1070,9 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         let symbolName: String
         let title: String
 
-        if let pauseUntil, now < pauseUntil {
-            symbolName = "pause.circle.fill"
-            title = "Lockdown Ready: Paused"
-        } else if let manualLockUntil, now < manualLockUntil {
+        let lockdownActive = isLockdownActive(now: now)
+
+        if let manualLockUntil, now < manualLockUntil {
             symbolName = "lock.circle.fill"
             title = "Lockdown Ready: Locked"
         } else if inBlockWindow(now: now) {
@@ -1098,11 +1098,17 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         stateItem.isEnabled = false
         menu.addItem(stateItem)
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(withTitle: "Show Window", action: #selector(showWindowFromStatusBar), keyEquivalent: "")
-        menu.addItem(withTitle: "Start Lockdown (30 Minutes)", action: #selector(startManualLockdown), keyEquivalent: "")
-        menu.addItem(withTitle: pauseUntil == nil ? "Pause for 30 Minutes" : "Resume Immediately", action: #selector(togglePause), keyEquivalent: "")
-        menu.addItem(withTitle: "Reload From Disk", action: #selector(reloadConfig), keyEquivalent: "")
-        menu.addItem(withTitle: "Quit", action: #selector(quitApp), keyEquivalent: "")
+
+        if lockdownActive {
+            let lockedItem = NSMenuItem(title: "Lockdown active. Controls unavailable.", action: nil, keyEquivalent: "")
+            lockedItem.isEnabled = false
+            menu.addItem(lockedItem)
+        } else {
+            menu.addItem(withTitle: "Show Window", action: #selector(showWindowFromStatusBar), keyEquivalent: "")
+            menu.addItem(withTitle: "Start Lockdown (30 Minutes)", action: #selector(startManualLockdown), keyEquivalent: "")
+            menu.addItem(withTitle: "Reload From Disk", action: #selector(reloadConfig), keyEquivalent: "")
+            menu.addItem(withTitle: "Quit", action: #selector(quitApp), keyEquivalent: "")
+        }
 
         for item in menu.items {
             item.target = self
@@ -1183,17 +1189,6 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         return config.blockWindows.contains { $0.contains(minuteOfDay, weekday: weekday) }
     }
 
-    private func isPaused(now: Date = Date()) -> Bool {
-        guard let pauseUntil else {
-            return false
-        }
-        if now < pauseUntil {
-            return true
-        }
-        self.pauseUntil = nil
-        return false
-    }
-
     private func isManualLockActive(now: Date = Date()) -> Bool {
         guard let manualLockUntil else {
             return false
@@ -1205,13 +1200,11 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         return false
     }
 
-    private func stateLine(now: Date = Date()) -> String {
-        if let pauseUntil, now < pauseUntil {
-            let fmt = RelativeDateTimeFormatter()
-            fmt.unitsStyle = .short
-            return "Paused (\(fmt.localizedString(for: pauseUntil, relativeTo: now)))"
-        }
+    private func isLockdownActive(now: Date = Date()) -> Bool {
+        inBlockWindow(now: now) || isManualLockActive(now: now)
+    }
 
+    private func stateLine(now: Date = Date()) -> String {
         let windows = config.blockWindows.map { $0.toDisplayString() }.joined(separator: ", ")
         let state: String
         if let manualLockUntil, now < manualLockUntil {
@@ -1245,13 +1238,12 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
             return
         }
 
-        guard !isPaused(now: now) else {
-            return
-        }
-
         disableWiFi()
         quitApps()
         killStubbornProcesses()
+        mainWindow?.orderOut(nil)
+        ensureStatusItem()
+        updateStatusItem(now: now)
 
         if !hasLockedInCurrentWindow || trigger == "manual-start" {
             lockScreen()
@@ -1266,17 +1258,6 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
     @objc private func startManualLockdown() {
         manualLockUntil = Date().addingTimeInterval(manualLockDuration)
         runEnforcementCycle(trigger: "manual-start")
-    }
-
-    @objc private func togglePause() {
-        if let pauseUntil, Date() < pauseUntil {
-            self.pauseUntil = nil
-            notify(title: appName, body: "Lockdown resumed.")
-        } else {
-            self.pauseUntil = Date().addingTimeInterval(30 * 60)
-            notify(title: appName, body: "Lockdown paused for 30 minutes.")
-        }
-        rebuildMenu()
     }
 
     @objc private func openConfig() {
