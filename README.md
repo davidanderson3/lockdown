@@ -6,8 +6,12 @@ The idea is simple: when you decide it is time to step away, Lockdown Ready can 
 
 ## Downloads
 
-- [macOS](https://github.com/davidanderson3/lockdown/raw/master/downloads/LockdownReady-mac.zip)
-- [Windows](https://github.com/davidanderson3/lockdown/raw/master/downloads/LockdownReady-windows.zip)
+Download the latest build from the GitHub Releases page:
+
+- [macOS](https://github.com/davidanderson3/lockdown/releases/latest)
+- [Windows](https://github.com/davidanderson3/lockdown/releases/latest)
+
+Upload the `.zip` files from `downloads/` to a GitHub release to make those links download real binaries.
 
 ## Platforms
 
