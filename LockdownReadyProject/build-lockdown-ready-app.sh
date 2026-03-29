@@ -6,11 +6,11 @@ PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$PROJECT_DIR/.." && pwd)"
 APP_NAME="LockdownReady"
 APP_BUNDLE="$ROOT_DIR/${APP_NAME}.app"
-SRC_FILE="$PROJECT_DIR/NightLockdownApp/Sources/main.swift"
+SRC_FILE="$PROJECT_DIR/LockdownReadyApp/Sources/main.swift"
 BIN_DIR="$APP_BUNDLE/Contents/MacOS"
 RESOURCES_DIR="$APP_BUNDLE/Contents/Resources"
 PLIST_FILE="$APP_BUNDLE/Contents/Info.plist"
-ICON_FILE="$PROJECT_DIR/NightLockdownApp/Assets/${APP_NAME}.icns"
+ICON_FILE="$PROJECT_DIR/LockdownReadyApp/Assets/${APP_NAME}.icns"
 
 if [[ ! -f "$SRC_FILE" ]]; then
   echo "Source file not found: $SRC_FILE"

@@ -20,17 +20,14 @@ internal sealed class MainForm : Form
     };
 
     private readonly ConfigStore _configStore = new();
-    private readonly Timer _timer = new();
+    private readonly System.Windows.Forms.Timer _timer = new();
     private readonly NotifyIcon _notifyIcon = new();
     private readonly Label _stateLabel = new();
     private readonly Label _detailLabel = new();
     private readonly DataGridView _scheduleGrid = new();
-    private readonly TextBox _appsTextBox = new();
     private readonly NumericUpDown _intervalInput = new();
     private readonly Button _startButton = new();
     private readonly Button _saveButton = new();
-    private readonly Button _reloadButton = new();
-    private readonly Button _openConfigButton = new();
     private readonly Button _quitButton = new();
 
     private LockdownConfig _config;
@@ -114,12 +111,6 @@ internal sealed class MainForm : Form
         _scheduleGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Start", Name = "Start" });
         _scheduleGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "End", Name = "End" });
 
-        _appsTextBox.Dock = DockStyle.Fill;
-        _appsTextBox.Multiline = true;
-        _appsTextBox.ScrollBars = ScrollBars.Vertical;
-        _appsTextBox.AcceptsReturn = true;
-        _appsTextBox.AcceptsTab = true;
-
         _intervalInput.Minimum = 15;
         _intervalInput.Maximum = 3600;
         _intervalInput.Value = 60;
@@ -132,14 +123,6 @@ internal sealed class MainForm : Form
         _saveButton.Text = "Save Settings";
         _saveButton.AutoSize = true;
         _saveButton.Click += (_, _) => SaveSettings();
-
-        _reloadButton.Text = "Reload From Disk";
-        _reloadButton.AutoSize = true;
-        _reloadButton.Click += (_, _) => ReloadConfig();
-
-        _openConfigButton.Text = "Open Raw Config File";
-        _openConfigButton.AutoSize = true;
-        _openConfigButton.Click += (_, _) => OpenConfigFile();
 
         _quitButton.Text = "Quit";
         _quitButton.AutoSize = true;
@@ -164,20 +147,6 @@ internal sealed class MainForm : Form
             AutoSize = true,
             ForeColor = Color.DimGray,
             Text = "Enter one row per window. Days can be Every day, Weekdays, Weekends, or a comma-separated list like Mon, Tue, Thu. Times can be 21:00 or 9:00 PM."
-        };
-
-        var appsLabel = new Label
-        {
-            AutoSize = true,
-            Font = new Font(Font, FontStyle.Bold),
-            Text = "Blocked Apps"
-        };
-
-        var appsHelp = new Label
-        {
-            AutoSize = true,
-            ForeColor = Color.DimGray,
-            Text = "Use one process name per line on Windows, such as chrome, msedge, slack, discord, code, or steam."
         };
 
         var intervalLabel = new Label
@@ -213,8 +182,6 @@ internal sealed class MainForm : Form
         {
             _startButton,
             _saveButton,
-            _reloadButton,
-            _openConfigButton,
             _quitButton
         });
 
@@ -228,8 +195,6 @@ internal sealed class MainForm : Form
         root.RowStyles.Clear();
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -254,21 +219,6 @@ internal sealed class MainForm : Form
         schedulePanel.Controls.Add(_scheduleGrid, 0, 2);
         root.Controls.Add(schedulePanel, 0, 3);
 
-        var appsPanel = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 3,
-            AutoSize = true
-        };
-        appsPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        appsPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        appsPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        appsPanel.Controls.Add(appsLabel, 0, 0);
-        appsPanel.Controls.Add(appsHelp, 0, 1);
-        appsPanel.Controls.Add(_appsTextBox, 0, 2);
-        root.Controls.Add(appsPanel, 0, 5);
-
         var intervalSection = new TableLayoutPanel
         {
             AutoSize = true,
@@ -278,9 +228,9 @@ internal sealed class MainForm : Form
         intervalSection.Controls.Add(intervalLabel, 0, 0);
         intervalSection.Controls.Add(intervalHelp, 0, 1);
         intervalSection.Controls.Add(intervalPanel, 0, 2);
-        root.Controls.Add(intervalSection, 0, 6);
+        root.Controls.Add(intervalSection, 0, 5);
 
-        root.Controls.Add(buttonPanel, 0, 7);
+        root.Controls.Add(buttonPanel, 0, 6);
 
         Controls.Add(root);
     }
@@ -296,7 +246,6 @@ internal sealed class MainForm : Form
                 TimeWindow.FormatMinutes(window.EndMinutes));
         }
 
-        _appsTextBox.Lines = _config.DistractingApps.ToArray();
         var interval = Math.Clamp((decimal)Math.Round(_config.CheckIntervalSeconds), _intervalInput.Minimum, _intervalInput.Maximum);
         _intervalInput.Value = interval;
         RefreshUi();
@@ -354,6 +303,18 @@ internal sealed class MainForm : Form
 
     private void StartManualLockdown()
     {
+        var result = MessageBox.Show(
+            this,
+            "This will start lockdown immediately for 30 minutes, turn off Wi-Fi, and lock the machine. Continue?",
+            "Start Lockdown",
+            MessageBoxButtons.OKCancel,
+            MessageBoxIcon.Warning);
+
+        if (result != DialogResult.OK)
+        {
+            return;
+        }
+
         _manualLockUntil = DateTimeOffset.Now.AddMinutes(ManualLockMinutes);
         RunEnforcementCycle("manual-start");
     }
@@ -381,7 +342,6 @@ internal sealed class MainForm : Form
 
         DisableWiFi();
         QuitApps();
-        KillStubbornProcesses();
         HideToTray(showNotice: trigger == "startup" || trigger == "manual-start");
 
         if (!_hasLockedInCurrentWindow || string.Equals(trigger, "manual-start", StringComparison.Ordinal))
@@ -412,8 +372,6 @@ internal sealed class MainForm : Form
         _notifyIcon.Text = active ? "Lockdown Ready: Active" : "Lockdown Ready";
         _startButton.Enabled = !active;
         _saveButton.Enabled = !active;
-        _reloadButton.Enabled = !active;
-        _openConfigButton.Enabled = !active;
         _quitButton.Enabled = !active;
         UpdateTrayMenu(now);
     }
@@ -542,12 +500,6 @@ internal sealed class MainForm : Form
             });
         }
 
-        var apps = _appsTextBox.Lines
-            .Select(line => line.Trim())
-            .Where(line => !string.IsNullOrWhiteSpace(line))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
         if (windows.Count == 0)
         {
             config = LockdownConfig.Default;
@@ -555,17 +507,10 @@ internal sealed class MainForm : Form
             return false;
         }
 
-        if (apps.Count == 0)
-        {
-            config = LockdownConfig.Default;
-            error = "Add at least one blocked app.";
-            return false;
-        }
-
         config = new LockdownConfig
         {
             BlockWindows = windows,
-            DistractingApps = apps,
+            DistractingApps = new List<string>(_config.DistractingApps),
             CheckIntervalSeconds = decimal.ToDouble(_intervalInput.Value)
         };
         error = string.Empty;
@@ -815,25 +760,6 @@ internal sealed class MainForm : Form
                 {
                     continue;
                 }
-            }
-            catch
-            {
-            }
-        }
-    }
-
-    private void KillStubbornProcesses()
-    {
-        foreach (var process in Process.GetProcesses())
-        {
-            try
-            {
-                if (!MatchesBlockedApp(process))
-                {
-                    continue;
-                }
-
-                process.Kill(entireProcessTree: false);
             }
             catch
             {

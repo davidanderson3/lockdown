@@ -6,23 +6,21 @@ The idea is simple: when you decide it is time to step away, Lockdown Ready can 
 
 ## Platforms
 
-- macOS app in `NightLockdownProject/NightLockdownApp`
-- Windows app in `NightLockdownProject/LockdownReady.Windows`
+- macOS app in `LockdownReadyProject/LockdownReadyApp`
+- Windows app in `LockdownReadyProject/LockdownReady.Windows`
 
 ## What It Does
 
 - locks your machine during scheduled break windows
 - lets you start an immediate lockdown for 30 minutes
-- quits and force-kills distracting apps
+- asks distracting apps to quit
 - turns off Wi-Fi during lockdown when the OS allows it
 - keeps running after the main window closes
 
 ## Main Controls
 
 - **Start Lockdown (30 Minutes)** starts an immediate break session
-- the main window lets you edit the recurring schedule, blocked apps, and check interval
-- **Open Raw Config File** opens the JSON config directly
-- **Reload From Disk** reloads settings from disk
+- the main window lets you edit the recurring schedule and check interval
 
 ## How Lockdown Works
 
@@ -30,7 +28,6 @@ During an active lockdown window, the app can:
 
 - turn off Wi-Fi
 - quit apps like browsers, chat apps, mail, music, games, or anything else you add to the blocked list
-- force-kill stubborn apps that do not quit cleanly
 - lock the screen or workstation so you have to consciously come back later
 - hide its main controls so you cannot simply reopen the app and change settings mid-lockdown
 
@@ -43,7 +40,7 @@ Closing the app window does not stop enforcement. The app continues running in t
 From the workspace root:
 
 ```bash
-./NightLockdownProject/build-night-lockdown-app.sh
+./LockdownReadyProject/build-lockdown-ready-app.sh
 ```
 
 This produces:
@@ -55,7 +52,7 @@ This produces:
 Optional install:
 
 ```bash
-./NightLockdownProject/build-night-lockdown-app.sh --install
+./LockdownReadyProject/build-lockdown-ready-app.sh --install
 ```
 
 ### Windows
@@ -63,7 +60,7 @@ Optional install:
 On Windows with the .NET 8 SDK installed, run:
 
 ```powershell
-.\NightLockdownProject\build-lockdown-ready-windows.ps1
+.\LockdownReadyProject\build-lockdown-ready-windows.ps1
 ```
 
 This publishes:
@@ -75,7 +72,7 @@ This publishes:
 Optional single-file publish:
 
 ```powershell
-.\NightLockdownProject\build-lockdown-ready-windows.ps1 -SelfContained
+.\LockdownReadyProject\build-lockdown-ready-windows.ps1 -SelfContained
 ```
 
 ## First Run Permissions
