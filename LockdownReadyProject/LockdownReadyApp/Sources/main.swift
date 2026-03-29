@@ -2,19 +2,40 @@ import AppKit
 import Foundation
 import UserNotifications
 
-private let uiBackgroundColor = NSColor(calibratedWhite: 0.94, alpha: 1.0)
-private let uiCardColor = NSColor(calibratedWhite: 0.98, alpha: 1.0)
+private let uiBackgroundColor = NSColor(calibratedRed: 0.93, green: 0.95, blue: 0.99, alpha: 1.0)
+private let uiCardColor = NSColor(calibratedRed: 0.99, green: 0.97, blue: 0.92, alpha: 1.0)
 private let uiInputColor = NSColor.white
-private let uiButtonColor = NSColor(calibratedWhite: 0.9, alpha: 1.0)
-private let uiBorderColor = NSColor(calibratedWhite: 0.75, alpha: 1.0)
+private let uiButtonColor = NSColor(calibratedRed: 0.86, green: 0.9, blue: 0.97, alpha: 1.0)
+private let uiBorderColor = NSColor(calibratedRed: 0.71, green: 0.78, blue: 0.88, alpha: 1.0)
 private let uiTextColor = NSColor.black
+private let uiStartButtonColor = NSColor(calibratedRed: 0.99, green: 0.8, blue: 0.74, alpha: 1.0)
+private let uiSaveButtonColor = NSColor(calibratedRed: 0.8, green: 0.93, blue: 0.84, alpha: 1.0)
+private let uiQuitButtonColor = NSColor(calibratedRed: 0.85, green: 0.88, blue: 0.95, alpha: 1.0)
+private let uiPanelTintColor = NSColor(calibratedRed: 0.97, green: 0.98, blue: 1.0, alpha: 1.0)
+private let uiPreviewBackgroundColor = NSColor(calibratedRed: 0.99, green: 0.98, blue: 0.95, alpha: 1.0)
 
-private func styleNeutralButton(_ button: NSButton, controlSize: NSControl.ControlSize = .regular) {
+private func styleNeutralButton(
+    _ button: NSButton,
+    controlSize: NSControl.ControlSize = .regular,
+    fillColor: NSColor = uiButtonColor
+) {
     button.bezelStyle = .rounded
     button.controlSize = controlSize
     button.font = NSFont.systemFont(ofSize: controlSize == .large ? 13 : 12, weight: .semibold)
     button.isBordered = true
-    button.bezelColor = uiButtonColor
+    button.bezelColor = fillColor
+    button.contentTintColor = uiTextColor
+}
+
+private func styleCheckboxButton(_ button: NSButton) {
+    let title = button.title
+    button.attributedTitle = NSAttributedString(
+        string: title,
+        attributes: [
+            .font: NSFont.systemFont(ofSize: 12, weight: .regular),
+            .foregroundColor: uiTextColor
+        ]
+    )
     button.contentTintColor = uiTextColor
 }
 
@@ -210,10 +231,13 @@ final class ScheduleRowView: NSView {
     private let endPicker = NSDatePicker()
     private let dayButtons: [NSButton]
     let removeButton = NSButton(title: "Remove", target: nil, action: nil)
+    var onChange: (() -> Void)?
 
     override init(frame frameRect: NSRect) {
         dayButtons = (1...7).map { day in
-            NSButton(checkboxWithTitle: TimeWindow.shortWeekdayName(day), target: nil, action: nil)
+            let button = NSButton(checkboxWithTitle: TimeWindow.shortWeekdayName(day), target: nil, action: nil)
+            styleCheckboxButton(button)
+            return button
         }
         super.init(frame: frameRect)
         buildUI()
@@ -271,7 +295,7 @@ final class ScheduleRowView: NSView {
         wantsLayer = true
         layer?.cornerRadius = 8
         layer?.borderWidth = 1
-        layer?.backgroundColor = uiInputColor.cgColor
+        layer?.backgroundColor = uiPanelTintColor.cgColor
         layer?.borderColor = uiBorderColor.cgColor
 
         let daysLabel = Self.makeLabel("Days")
@@ -283,6 +307,10 @@ final class ScheduleRowView: NSView {
         dayStack.alignment = .centerY
         dayStack.spacing = 8
         dayStack.distribution = .fillEqually
+        for button in dayButtons {
+            button.target = self
+            button.action = #selector(handleValueChanged)
+        }
 
         configureTimePicker(startPicker)
         configureTimePicker(endPicker)
@@ -319,6 +347,12 @@ final class ScheduleRowView: NSView {
         picker.locale = Locale(identifier: "en_US_POSIX")
         picker.calendar = Calendar(identifier: .gregorian)
         picker.timeZone = TimeZone(secondsFromGMT: 0)
+        picker.target = self
+        picker.action = #selector(handleValueChanged)
+    }
+
+    @objc private func handleValueChanged() {
+        onChange?()
     }
 
     private static func makeLabel(_ text: String) -> NSTextField {
@@ -348,9 +382,113 @@ final class ScheduleRowView: NSView {
     }
 }
 
+final class WeeklySchedulePreviewView: NSView {
+    var windows: [TimeWindow] = [] {
+        didSet {
+            needsDisplay = true
+        }
+    }
+
+    override var isFlipped: Bool {
+        true
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 10
+        layer?.borderWidth = 1
+        layer?.backgroundColor = uiPreviewBackgroundColor.cgColor
+        layer?.borderColor = uiBorderColor.cgColor
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        uiPreviewBackgroundColor.setFill()
+        dirtyRect.fill()
+
+        let leftLabelWidth: CGFloat = 44
+        let topInset: CGFloat = 12
+        let rightInset: CGFloat = 12
+        let bottomInset: CGFloat = 26
+        let chartRect = NSRect(
+            x: leftLabelWidth,
+            y: topInset,
+            width: max(0, bounds.width - leftLabelWidth - rightInset),
+            height: max(0, bounds.height - topInset - bottomInset)
+        )
+
+        guard chartRect.width > 0, chartRect.height > 0 else {
+            return
+        }
+
+        let rowHeight = chartRect.height / 7
+        let columnWidth = chartRect.width / 24
+        let gridBorder = NSColor(calibratedRed: 0.79, green: 0.82, blue: 0.88, alpha: 1.0)
+        let blockedFill = NSColor(calibratedRed: 0.37, green: 0.58, blue: 0.9, alpha: 0.88)
+        let openFill = NSColor(calibratedRed: 0.97, green: 0.93, blue: 0.86, alpha: 1.0)
+        let textAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+            .foregroundColor: uiTextColor
+        ]
+
+        for day in 1...7 {
+            let y = chartRect.minY + CGFloat(day - 1) * rowHeight
+            let label = TimeWindow.shortWeekdayName(day)
+            let labelSize = label.size(withAttributes: textAttributes)
+            label.draw(
+                at: NSPoint(x: 6, y: y + (rowHeight - labelSize.height) / 2),
+                withAttributes: textAttributes
+            )
+
+            for hour in 0..<24 {
+                let rect = NSRect(
+                    x: chartRect.minX + CGFloat(hour) * columnWidth,
+                    y: y,
+                    width: columnWidth,
+                    height: rowHeight
+                )
+                let blocked = windows.contains { window in
+                    Self.hourIntersects(window: window, weekday: day, hour: hour)
+                }
+                (blocked ? blockedFill : openFill).setFill()
+                rect.fill()
+                gridBorder.setStroke()
+                NSBezierPath(rect: rect).stroke()
+            }
+        }
+
+        let hourLabels: [(Int, String)] = [(0, "12a"), (6, "6a"), (12, "12p"), (18, "6p"), (24, "12a")]
+        for (hour, label) in hourLabels {
+            let x = chartRect.minX + CGFloat(hour) * columnWidth
+            let size = label.size(withAttributes: textAttributes)
+            let drawX = min(max(chartRect.minX, x - size.width / 2), chartRect.maxX - size.width)
+            label.draw(
+                at: NSPoint(x: drawX, y: chartRect.maxY + 4),
+                withAttributes: textAttributes
+            )
+        }
+    }
+
+    private static func hourIntersects(window: TimeWindow, weekday: Int, hour: Int) -> Bool {
+        let startMinute = hour * 60
+        return [0, 15, 30, 45].contains { offset in
+            window.contains(startMinute + offset, weekday: weekday)
+        }
+    }
+}
+
 final class ScheduleEditorView: NSView {
+    private let summaryLabel = NSTextField(labelWithString: "")
+    private let previewView = WeeklySchedulePreviewView()
     private let rowsStack = NSStackView()
-    private let addButton = NSButton(title: "Add Schedule", target: nil, action: nil)
+    private let addButton = NSButton(title: "Add Lock Window", target: nil, action: nil)
     private var rowViews: [ScheduleRowView] = []
 
     override init(frame frameRect: NSRect) {
@@ -431,6 +569,16 @@ final class ScheduleEditorView: NSView {
         helpLabel.textColor = uiTextColor
         helpLabel.maximumNumberOfLines = 2
 
+        summaryLabel.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        summaryLabel.textColor = uiTextColor
+        summaryLabel.maximumNumberOfLines = 3
+
+        let previewLabel = NSTextField(labelWithString: "Blocked Time Preview")
+        previewLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        previewLabel.textColor = uiTextColor
+
+        previewView.translatesAutoresizingMaskIntoConstraints = false
+
         rowsStack.orientation = .vertical
         rowsStack.alignment = .leading
         rowsStack.spacing = 12
@@ -438,9 +586,9 @@ final class ScheduleEditorView: NSView {
 
         addButton.target = self
         addButton.action = #selector(addScheduleRowAction)
-        styleNeutralButton(addButton)
+        styleNeutralButton(addButton, fillColor: uiSaveButtonColor)
 
-        let rootStack = NSStackView(views: [titleLabel, helpLabel, rowsStack, addButton])
+        let rootStack = NSStackView(views: [titleLabel, helpLabel, summaryLabel, previewLabel, previewView, rowsStack, addButton])
         rootStack.orientation = .vertical
         rootStack.alignment = .leading
         rootStack.spacing = 12
@@ -450,41 +598,62 @@ final class ScheduleEditorView: NSView {
 
         NSLayoutConstraint.activate([
             widthAnchor.constraint(equalToConstant: 640),
-            heightAnchor.constraint(equalToConstant: 420),
             rootStack.leadingAnchor.constraint(equalTo: leadingAnchor),
             rootStack.trailingAnchor.constraint(equalTo: trailingAnchor),
             rootStack.topAnchor.constraint(equalTo: topAnchor),
             rootStack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
-            rowsStack.widthAnchor.constraint(equalTo: rootStack.widthAnchor)
+            rowsStack.widthAnchor.constraint(equalTo: rootStack.widthAnchor),
+            previewView.widthAnchor.constraint(equalTo: rootStack.widthAnchor),
+            previewView.heightAnchor.constraint(equalToConstant: 210)
         ])
     }
 
     private func addScheduleRow(window: TimeWindow) {
         let row = ScheduleRowView(window: window)
+        row.onChange = { [weak self] in
+            self?.updatePreview()
+        }
         row.removeButton.target = self
         row.removeButton.action = #selector(removeScheduleRowAction(_:))
         rowViews.append(row)
         rowsStack.addArrangedSubview(row)
         refreshRemoveButtons()
+        updatePreview()
     }
 
     private func refreshRemoveButtons() {
         let canRemove = rowViews.count > 1
         rowViews.forEach { $0.setCanRemove(canRemove) }
     }
+
+    private func updatePreview() {
+        let windows: [TimeWindow] = rowViews.compactMap { row in
+            let weekdays = row.selectedWeekdays()
+            let startMinutes = row.startMinutesValue()
+            let endMinutes = row.endMinutesValue()
+            guard !weekdays.isEmpty, startMinutes != endMinutes else {
+                return nil
+            }
+            return TimeWindow(startMinutes: startMinutes, endMinutes: endMinutes, weekdays: weekdays)
+        }
+        previewView.windows = windows
+        summaryLabel.stringValue = windows.isEmpty
+            ? "Schedule: None"
+            : "Schedule: " + windows.map { $0.toDisplayString() }.joined(separator: ", ")
+    }
 }
 
 final class LockdownSettingsEditorView: NSView {
     private let scheduleEditor: ScheduleEditorView
-    private let intervalField = NSTextField()
-    private let intervalStepper = NSStepper()
     private let distractingApps: [String]
+    private let checkIntervalSeconds: TimeInterval
 
     init(config: LockdownConfig) {
         scheduleEditor = ScheduleEditorView(windows: config.blockWindows)
         distractingApps = config.distractingApps
-        super.init(frame: NSRect(x: 0, y: 0, width: 700, height: 420))
-        buildUI(checkIntervalSeconds: config.checkIntervalSeconds)
+        checkIntervalSeconds = config.checkIntervalSeconds
+        super.init(frame: NSRect(x: 0, y: 0, width: 700, height: 640))
+        buildUI()
     }
 
     @available(*, unavailable)
@@ -494,72 +663,18 @@ final class LockdownSettingsEditorView: NSView {
 
     func validatedConfig() throws -> LockdownConfig {
         let windows = try scheduleEditor.validatedWindows()
-        let rawValue = intervalField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard let interval = Int(rawValue) else {
-            throw SettingsEditorValidationError(message: "Check interval must be a whole number of seconds.")
-        }
-        guard interval >= 15 else {
-            throw SettingsEditorValidationError(message: "Check interval must be at least 15 seconds.")
-        }
-        guard interval <= 3600 else {
-            throw SettingsEditorValidationError(message: "Check interval must be 3600 seconds or less.")
-        }
 
         return LockdownConfig(
             blockWindows: windows,
             distractingApps: distractingApps,
-            checkIntervalSeconds: TimeInterval(interval)
+            checkIntervalSeconds: checkIntervalSeconds
         )
     }
 
-    @objc private func stepInterval(_ sender: NSStepper) {
-        intervalField.stringValue = String(Int(sender.integerValue))
-    }
-
-    private func buildUI(checkIntervalSeconds: TimeInterval) {
+    private func buildUI() {
         translatesAutoresizingMaskIntoConstraints = false
 
-        let intervalLabel = NSTextField(labelWithString: "Check Interval")
-        intervalLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        intervalLabel.textColor = uiTextColor
-
-        let intervalHelpLabel = NSTextField(
-            wrappingLabelWithString: "How often the app re-checks the schedule and re-enforces lockdown if needed."
-        )
-        intervalHelpLabel.font = NSFont.systemFont(ofSize: 12)
-        intervalHelpLabel.textColor = uiTextColor
-        intervalHelpLabel.maximumNumberOfLines = 2
-
-        intervalField.translatesAutoresizingMaskIntoConstraints = false
-        intervalField.alignment = .right
-        intervalField.placeholderString = "60"
-        intervalField.stringValue = String(Int(checkIntervalSeconds))
-        intervalField.textColor = uiTextColor
-        intervalField.backgroundColor = uiInputColor
-
-        let secondsLabel = NSTextField(labelWithString: "seconds")
-        secondsLabel.textColor = uiTextColor
-
-        intervalStepper.translatesAutoresizingMaskIntoConstraints = false
-        intervalStepper.minValue = 15
-        intervalStepper.maxValue = 3600
-        intervalStepper.increment = 15
-        intervalStepper.integerValue = Int(checkIntervalSeconds)
-        intervalStepper.target = self
-        intervalStepper.action = #selector(stepInterval(_:))
-
-        let intervalRow = NSStackView(views: [intervalField, secondsLabel, intervalStepper])
-        intervalRow.orientation = .horizontal
-        intervalRow.alignment = .centerY
-        intervalRow.spacing = 10
-
-        let intervalSection = NSStackView(views: [intervalLabel, intervalHelpLabel, intervalRow])
-        intervalSection.orientation = .vertical
-        intervalSection.alignment = .leading
-        intervalSection.spacing = 8
-
-        let contentStack = NSStackView(views: [scheduleEditor, intervalSection])
+        let contentStack = NSStackView(views: [scheduleEditor])
         contentStack.orientation = .vertical
         contentStack.alignment = .leading
         contentStack.spacing = 18
@@ -568,13 +683,11 @@ final class LockdownSettingsEditorView: NSView {
         addSubview(contentStack)
 
         NSLayoutConstraint.activate([
-            widthAnchor.constraint(equalToConstant: 700),
-            heightAnchor.constraint(equalToConstant: 500),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 640),
             contentStack.leadingAnchor.constraint(equalTo: leadingAnchor),
             contentStack.trailingAnchor.constraint(equalTo: trailingAnchor),
             contentStack.topAnchor.constraint(equalTo: topAnchor),
-            contentStack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            intervalField.widthAnchor.constraint(equalToConstant: 64)
+            contentStack.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
     }
 }
@@ -602,6 +715,7 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
     private var config: LockdownConfig = .default
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.appearance = NSAppearance(named: .aqua)
         UNUserNotificationCenter.current().delegate = self
         requestNotificationPermission()
         loadOrCreateConfig()
@@ -651,6 +765,7 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         }
 
         window.title = appName
+        window.appearance = NSAppearance(named: .aqua)
         window.backgroundColor = uiBackgroundColor
 
         let backgroundView = NSView()
@@ -677,17 +792,20 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
 
         let startButton = makeActionButton(
             title: "Start Lockdown (30 Minutes)",
-            action: #selector(startManualLockdown)
+            action: #selector(startManualLockdown),
+            fillColor: uiStartButtonColor
         )
 
         let saveButton = makeActionButton(
             title: "Save Settings",
-            action: #selector(saveSettings)
+            action: #selector(saveSettings),
+            fillColor: uiSaveButtonColor
         )
 
         let quitButton = makeActionButton(
             title: "Quit",
-            action: #selector(quitApp)
+            action: #selector(quitApp),
+            fillColor: uiQuitButtonColor
         )
 
         let heroStack = NSStackView(views: [titleLabel, subtitleLabel, stateLabel, detailLabel])
@@ -707,31 +825,14 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         heroCard.addSubview(heroStack)
         heroCard.addSubview(primaryActions)
 
-        let settingsTitle = NSTextField(labelWithString: "Settings")
-        settingsTitle.font = NSFont.systemFont(ofSize: 20, weight: .bold)
-        settingsTitle.textColor = uiTextColor
-
         let settingsEditor = LockdownSettingsEditorView(config: config)
         self.settingsEditor = settingsEditor
-
-        let settingsStack = NSStackView(views: [settingsTitle, settingsEditor])
-        settingsStack.orientation = .vertical
-        settingsStack.alignment = .leading
-        settingsStack.spacing = 14
-        settingsStack.translatesAutoresizingMaskIntoConstraints = false
-
-        let settingsCard = makeCard(backgroundColor: uiCardColor)
-        settingsCard.addSubview(settingsStack)
-
-        let rootStack = NSStackView(views: [heroCard, settingsCard])
-        rootStack.orientation = .vertical
-        rootStack.alignment = .leading
-        rootStack.spacing = 18
-        rootStack.translatesAutoresizingMaskIntoConstraints = false
+        settingsEditor.translatesAutoresizingMaskIntoConstraints = false
+        heroCard.addSubview(settingsEditor)
 
         let documentView = NSView()
         documentView.translatesAutoresizingMaskIntoConstraints = false
-        documentView.addSubview(rootStack)
+        documentView.addSubview(heroCard)
 
         let scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -750,10 +851,10 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
             scrollView.topAnchor.constraint(equalTo: backgroundView.topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: backgroundView.bottomAnchor),
 
-            rootStack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 22),
-            rootStack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -22),
-            rootStack.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 22),
-            rootStack.bottomAnchor.constraint(equalTo: documentView.bottomAnchor, constant: -22),
+            heroCard.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 22),
+            heroCard.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -22),
+            heroCard.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 22),
+            heroCard.bottomAnchor.constraint(equalTo: documentView.bottomAnchor, constant: -22),
             documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
 
             heroStack.leadingAnchor.constraint(equalTo: heroCard.leadingAnchor, constant: 22),
@@ -763,14 +864,10 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
             primaryActions.leadingAnchor.constraint(equalTo: heroCard.leadingAnchor, constant: 22),
             primaryActions.trailingAnchor.constraint(equalTo: heroCard.trailingAnchor, constant: -22),
             primaryActions.topAnchor.constraint(equalTo: heroStack.bottomAnchor, constant: 18),
-            primaryActions.bottomAnchor.constraint(equalTo: heroCard.bottomAnchor, constant: -22),
-
-            settingsStack.leadingAnchor.constraint(equalTo: settingsCard.leadingAnchor, constant: 22),
-            settingsStack.trailingAnchor.constraint(equalTo: settingsCard.trailingAnchor, constant: -22),
-            settingsStack.topAnchor.constraint(equalTo: settingsCard.topAnchor, constant: 22),
-            settingsStack.bottomAnchor.constraint(equalTo: settingsCard.bottomAnchor, constant: -22),
-            heroCard.widthAnchor.constraint(equalTo: rootStack.widthAnchor),
-            settingsCard.widthAnchor.constraint(equalTo: rootStack.widthAnchor)
+            settingsEditor.leadingAnchor.constraint(equalTo: heroCard.leadingAnchor, constant: 22),
+            settingsEditor.trailingAnchor.constraint(equalTo: heroCard.trailingAnchor, constant: -22),
+            settingsEditor.topAnchor.constraint(equalTo: primaryActions.bottomAnchor, constant: 18),
+            settingsEditor.bottomAnchor.constraint(equalTo: heroCard.bottomAnchor, constant: -22)
         ])
 
         rebuildMenu()
@@ -802,20 +899,25 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         let now = Date()
         let title: String
         let detail: String
+        let showsStateHeading: Bool
         if let manualLockUntil, now < manualLockUntil {
             let fmt = RelativeDateTimeFormatter()
             fmt.unitsStyle = .short
             title = "LOCKED NOW"
-            detail = "Manual lockdown ends \(fmt.localizedString(for: manualLockUntil, relativeTo: now)).\n\(scheduleSummary())"
+            detail = "Manual lockdown ends \(fmt.localizedString(for: manualLockUntil, relativeTo: now))."
+            showsStateHeading = true
         } else if inBlockWindow(now: now) {
             title = "LOCKDOWN ACTIVE"
-            detail = "The current schedule is active.\n\(scheduleSummary())"
+            detail = "The current schedule is active."
+            showsStateHeading = true
         } else {
-            title = "LOCKDOWN READY"
-            detail = "Window closed does not stop enforcement.\n\(scheduleSummary())"
+            title = ""
+            detail = "Closing this window does not stop enforcement."
+            showsStateHeading = false
         }
 
         stateLabel.stringValue = title
+        stateLabel.isHidden = !showsStateHeading
         stateLabel.textColor = uiTextColor
         detailLabel.stringValue = detail
         updateStatusItem(now: now)
@@ -904,15 +1006,16 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
 
     private func makeActionButton(
         title: String,
-        action: Selector
+        action: Selector,
+        fillColor: NSColor = uiButtonColor
     ) -> NSButton {
         let button = NSButton(title: title, target: self, action: action)
-        styleButton(button)
+        styleButton(button, fillColor: fillColor)
         return button
     }
 
-    private func styleButton(_ button: NSButton) {
-        styleNeutralButton(button, controlSize: .large)
+    private func styleButton(_ button: NSButton, fillColor: NSColor) {
+        styleNeutralButton(button, controlSize: .large, fillColor: fillColor)
     }
 
     private func startScheduler() {

@@ -24,8 +24,9 @@ internal sealed class MainForm : Form
     private readonly NotifyIcon _notifyIcon = new();
     private readonly Label _stateLabel = new();
     private readonly Label _detailLabel = new();
+    private readonly Label _scheduleSummaryLabel = new();
     private readonly DataGridView _scheduleGrid = new();
-    private readonly NumericUpDown _intervalInput = new();
+    private readonly SchedulePreviewPanel _schedulePreview = new();
     private readonly Button _startButton = new();
     private readonly Button _saveButton = new();
     private readonly Button _quitButton = new();
@@ -102,6 +103,10 @@ internal sealed class MainForm : Form
         _detailLabel.MaximumSize = new Size(980, 0);
         _detailLabel.ForeColor = Color.DimGray;
 
+        _scheduleSummaryLabel.AutoSize = true;
+        _scheduleSummaryLabel.ForeColor = Color.DimGray;
+        _scheduleSummaryLabel.MaximumSize = new Size(980, 0);
+
         _scheduleGrid.Dock = DockStyle.Fill;
         _scheduleGrid.AllowUserToResizeRows = false;
         _scheduleGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
@@ -110,11 +115,15 @@ internal sealed class MainForm : Form
         _scheduleGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Days", Name = "Days" });
         _scheduleGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Start", Name = "Start" });
         _scheduleGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "End", Name = "End" });
+        _scheduleGrid.CellEndEdit += (_, _) => UpdateSchedulePreviewFromEditor();
+        _scheduleGrid.RowsAdded += (_, _) => UpdateSchedulePreviewFromEditor();
+        _scheduleGrid.RowsRemoved += (_, _) => UpdateSchedulePreviewFromEditor();
+        _scheduleGrid.UserDeletedRow += (_, _) => UpdateSchedulePreviewFromEditor();
 
-        _intervalInput.Minimum = 15;
-        _intervalInput.Maximum = 3600;
-        _intervalInput.Value = 60;
-        _intervalInput.Width = 100;
+        _schedulePreview.Dock = DockStyle.Fill;
+        _schedulePreview.Margin = new Padding(0, 8, 0, 0);
+        _schedulePreview.MinimumSize = new Size(0, 220);
+        _schedulePreview.Height = 220;
 
         _startButton.Text = "Start Lockdown (30 Minutes)";
         _startButton.AutoSize = true;
@@ -149,27 +158,12 @@ internal sealed class MainForm : Form
             Text = "Enter one row per window. Days can be Every day, Weekdays, Weekends, or a comma-separated list like Mon, Tue, Thu. Times can be 21:00 or 9:00 PM."
         };
 
-        var intervalLabel = new Label
+        var schedulePreviewLabel = new Label
         {
             AutoSize = true,
             Font = new Font(Font, FontStyle.Bold),
-            Text = "Enforcement Check Interval (seconds)"
+            Text = "Blocked Time Preview"
         };
-
-        var intervalHelp = new Label
-        {
-            AutoSize = true,
-            ForeColor = Color.DimGray,
-            Text = "The app re-checks the schedule and re-enforces lockdown on this cadence."
-        };
-
-        var intervalPanel = new FlowLayoutPanel
-        {
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false
-        };
-        intervalPanel.Controls.Add(_intervalInput);
 
         var buttonPanel = new FlowLayoutPanel
         {
@@ -198,7 +192,6 @@ internal sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         root.Controls.Add(_stateLabel, 0, 0);
         root.Controls.Add(_detailLabel, 0, 1);
@@ -208,29 +201,24 @@ internal sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
+            RowCount = 5,
             AutoSize = true
         };
         schedulePanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         schedulePanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         schedulePanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        schedulePanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        schedulePanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        schedulePanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 220));
         schedulePanel.Controls.Add(scheduleLabel, 0, 0);
         schedulePanel.Controls.Add(scheduleHelp, 0, 1);
         schedulePanel.Controls.Add(_scheduleGrid, 0, 2);
+        schedulePanel.Controls.Add(_scheduleSummaryLabel, 0, 3);
+        schedulePanel.Controls.Add(schedulePreviewLabel, 0, 4);
+        schedulePanel.Controls.Add(_schedulePreview, 0, 5);
         root.Controls.Add(schedulePanel, 0, 3);
 
-        var intervalSection = new TableLayoutPanel
-        {
-            AutoSize = true,
-            ColumnCount = 1,
-            RowCount = 3
-        };
-        intervalSection.Controls.Add(intervalLabel, 0, 0);
-        intervalSection.Controls.Add(intervalHelp, 0, 1);
-        intervalSection.Controls.Add(intervalPanel, 0, 2);
-        root.Controls.Add(intervalSection, 0, 5);
-
-        root.Controls.Add(buttonPanel, 0, 6);
+        root.Controls.Add(buttonPanel, 0, 4);
 
         Controls.Add(root);
     }
@@ -246,8 +234,7 @@ internal sealed class MainForm : Form
                 TimeWindow.FormatMinutes(window.EndMinutes));
         }
 
-        var interval = Math.Clamp((decimal)Math.Round(_config.CheckIntervalSeconds), _intervalInput.Minimum, _intervalInput.Maximum);
-        _intervalInput.Value = interval;
+        UpdateSchedulePreviewFromEditor();
         RefreshUi();
     }
 
@@ -381,19 +368,19 @@ internal sealed class MainForm : Form
         if (_manualLockUntil.HasValue && now < _manualLockUntil.Value)
         {
             color = Color.Firebrick;
-            detailText = $"Manual lockdown ends {FormatRelative(_manualLockUntil.Value, now)}.{Environment.NewLine}{ScheduleSummary()}";
+            detailText = $"Manual lockdown ends {FormatRelative(_manualLockUntil.Value, now)}.";
             return "LOCKED NOW";
         }
 
         if (InBlockWindow(now))
         {
             color = Color.Firebrick;
-            detailText = $"The current schedule is active.{Environment.NewLine}{ScheduleSummary()}";
+            detailText = "The current schedule is active.";
             return "LOCKDOWN ACTIVE";
         }
 
         color = Color.RoyalBlue;
-        detailText = $"Closing this window does not stop enforcement.{Environment.NewLine}{ScheduleSummary()}";
+        detailText = "Closing this window does not stop enforcement.";
         return "LOCKDOWN READY";
     }
 
@@ -511,10 +498,64 @@ internal sealed class MainForm : Form
         {
             BlockWindows = windows,
             DistractingApps = new List<string>(_config.DistractingApps),
-            CheckIntervalSeconds = decimal.ToDouble(_intervalInput.Value)
+            CheckIntervalSeconds = _config.CheckIntervalSeconds
         };
         error = string.Empty;
         return true;
+    }
+
+    private void UpdateSchedulePreviewFromEditor()
+    {
+        var windows = new List<TimeWindow>();
+        for (var rowIndex = 0; rowIndex < _scheduleGrid.Rows.Count; rowIndex++)
+        {
+            var row = _scheduleGrid.Rows[rowIndex];
+            if (row.IsNewRow)
+            {
+                continue;
+            }
+
+            var daysText = Convert.ToString(row.Cells[0].Value)?.Trim() ?? string.Empty;
+            var startText = Convert.ToString(row.Cells[1].Value)?.Trim() ?? string.Empty;
+            var endText = Convert.ToString(row.Cells[2].Value)?.Trim() ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(daysText) && string.IsNullOrWhiteSpace(startText) && string.IsNullOrWhiteSpace(endText))
+            {
+                continue;
+            }
+
+            if (!TryParseDays(daysText, out var weekdays))
+            {
+                continue;
+            }
+
+            if (!TryParseTimeMinutes(startText, out var startMinutes))
+            {
+                continue;
+            }
+
+            if (!TryParseTimeMinutes(endText, out var endMinutes))
+            {
+                continue;
+            }
+
+            if (startMinutes == endMinutes)
+            {
+                continue;
+            }
+
+            windows.Add(new TimeWindow
+            {
+                Weekdays = weekdays,
+                StartMinutes = startMinutes,
+                EndMinutes = endMinutes
+            });
+        }
+
+        _scheduleSummaryLabel.Text = windows.Count == 0
+            ? "Schedule: None"
+            : "Schedule: " + string.Join(", ", windows.Select(window => window.ToDisplayString()));
+        _schedulePreview.SetWindows(windows);
     }
 
     private bool TryParseDays(string text, out List<int> weekdays)
@@ -909,4 +950,113 @@ internal sealed class MainForm : Form
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool LockWorkStation();
+}
+
+internal sealed class SchedulePreviewPanel : Control
+{
+    private IReadOnlyList<TimeWindow> _windows = Array.Empty<TimeWindow>();
+
+    public SchedulePreviewPanel()
+    {
+        DoubleBuffered = true;
+        ResizeRedraw = true;
+        BackColor = Color.White;
+        ForeColor = Color.Black;
+    }
+
+    public void SetWindows(IReadOnlyList<TimeWindow> windows)
+    {
+        _windows = windows;
+        Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+
+        var g = e.Graphics;
+        g.Clear(Color.White);
+
+        var bounds = ClientRectangle;
+        if (bounds.Width < 220 || bounds.Height < 140)
+        {
+            return;
+        }
+
+        const float leftLabelWidth = 42f;
+        const float topInset = 12f;
+        const float rightInset = 12f;
+        const float bottomInset = 28f;
+        var chartRect = new RectangleF(
+            leftLabelWidth,
+            topInset,
+            bounds.Width - leftLabelWidth - rightInset,
+            bounds.Height - topInset - bottomInset);
+
+        if (chartRect.Width <= 0 || chartRect.Height <= 0)
+        {
+            return;
+        }
+
+        var rowHeight = chartRect.Height / 7f;
+        var columnWidth = chartRect.Width / 24f;
+        using var labelBrush = new SolidBrush(Color.Black);
+        using var blockedBrush = new SolidBrush(Color.FromArgb(190, 68, 122, 224));
+        using var openBrush = new SolidBrush(Color.FromArgb(245, 245, 245));
+        using var borderPen = new Pen(Color.FromArgb(205, 205, 205));
+        using var outerPen = new Pen(Color.FromArgb(160, 160, 160));
+        using var font = new Font(Font.FontFamily, 9f, FontStyle.Regular);
+        var labelFormat = new StringFormat
+        {
+            Alignment = StringAlignment.Near,
+            LineAlignment = StringAlignment.Center
+        };
+
+        for (var weekday = 1; weekday <= 7; weekday++)
+        {
+            var y = chartRect.Top + (weekday - 1) * rowHeight;
+            var labelRect = new RectangleF(4f, y, leftLabelWidth - 8f, rowHeight);
+            g.DrawString(TimeWindow.ShortWeekdayName(weekday), font, labelBrush, labelRect, labelFormat);
+
+            for (var hour = 0; hour < 24; hour++)
+            {
+                var cellRect = new RectangleF(
+                    chartRect.Left + hour * columnWidth,
+                    y,
+                    columnWidth,
+                    rowHeight);
+                var blocked = _windows.Any(window => HourIntersects(window, weekday, hour));
+                g.FillRectangle(blocked ? blockedBrush : openBrush, cellRect);
+                g.DrawRectangle(borderPen, cellRect.X, cellRect.Y, cellRect.Width, cellRect.Height);
+            }
+        }
+
+        g.DrawRectangle(outerPen, chartRect.X, chartRect.Y, chartRect.Width, chartRect.Height);
+
+        var hourLabels = new (int Hour, string Label)[]
+        {
+            (0, "12a"),
+            (6, "6a"),
+            (12, "12p"),
+            (18, "6p"),
+            (24, "12a")
+        };
+
+        foreach (var (hour, label) in hourLabels)
+        {
+            var x = chartRect.Left + hour * columnWidth;
+            var size = g.MeasureString(label, font);
+            var drawX = Math.Min(Math.Max(chartRect.Left, x - size.Width / 2f), chartRect.Right - size.Width);
+            g.DrawString(label, font, labelBrush, drawX, chartRect.Bottom + 4f);
+        }
+    }
+
+    private static bool HourIntersects(TimeWindow window, int weekday, int hour)
+    {
+        var startMinute = hour * 60;
+        return window.Contains(startMinute, weekday)
+            || window.Contains(startMinute + 15, weekday)
+            || window.Contains(startMinute + 30, weekday)
+            || window.Contains(startMinute + 45, weekday);
+    }
 }
