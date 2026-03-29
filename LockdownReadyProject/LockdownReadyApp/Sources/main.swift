@@ -499,17 +499,7 @@ final class ScheduleEditorView: NSView {
 
     convenience init(windows: [TimeWindow]) {
         self.init(frame: NSRect(x: 0, y: 0, width: 640, height: 420))
-        rowViews.forEach { row in
-            rowsStack.removeArrangedSubview(row)
-            row.removeFromSuperview()
-        }
-        rowViews.removeAll()
-
-        let sourceWindows = windows.isEmpty ? [TimeWindow.fromHours(startHour: 21, endHour: 8)] : windows
-        for window in sourceWindows {
-            addScheduleRow(window: window)
-        }
-        refreshRemoveButtons()
+        load(windows: windows)
     }
 
     @available(*, unavailable)
@@ -538,6 +528,21 @@ final class ScheduleEditorView: NSView {
         return windows
     }
 
+    func load(windows: [TimeWindow]) {
+        rowViews.forEach { row in
+            rowsStack.removeArrangedSubview(row)
+            row.removeFromSuperview()
+        }
+        rowViews.removeAll()
+
+        let sourceWindows = windows.isEmpty ? [TimeWindow.fromHours(startHour: 21, endHour: 8)] : windows
+        for window in sourceWindows {
+            addScheduleRow(window: window)
+        }
+        refreshRemoveButtons()
+        updatePreview()
+    }
+
     @objc private func addScheduleRowAction() {
         addScheduleRow(window: TimeWindow.fromHours(startHour: 21, endHour: 8))
     }
@@ -553,6 +558,7 @@ final class ScheduleEditorView: NSView {
         row.removeFromSuperview()
         rowViews.removeAll { $0 === row }
         refreshRemoveButtons()
+        updatePreview()
     }
 
     private func buildUI() {
@@ -690,6 +696,10 @@ final class LockdownSettingsEditorView: NSView {
             distractingApps: distractingApps,
             checkIntervalSeconds: checkIntervalSeconds
         )
+    }
+
+    func reload(config: LockdownConfig) {
+        scheduleEditor.load(windows: config.blockWindows)
     }
 
     private func buildUI() {
@@ -943,6 +953,7 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
             return
         }
 
+        settingsEditor?.reload(config: config)
         NSApp.activate(ignoringOtherApps: true)
         mainWindow?.makeKeyAndOrderFront(nil)
         scrollMainWindowToTop()
@@ -950,6 +961,7 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
     }
 
     private func hideMainWindowToStatusBar() {
+        settingsEditor?.reload(config: config)
         mainWindow?.orderOut(nil)
         ensureStatusItem()
         updateStatusItem()

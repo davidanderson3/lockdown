@@ -554,6 +554,7 @@ internal sealed class MainForm : Form
             return;
         }
 
+        LoadConfigIntoEditor();
         ShowInTaskbar = true;
         Show();
         WindowState = FormWindowState.Normal;
