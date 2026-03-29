@@ -6,8 +6,8 @@ The idea is simple: when you decide it is time to step away, Lockdown Ready can 
 
 ## Downloads
 
-- [macOS](https://github.com/your-org/your-repo/releases/latest/download/LockdownReady-mac.zip)
-- [Windows](https://github.com/your-org/your-repo/releases/latest/download/LockdownReady-win.exe)
+- [macOS](https://github.com/davidanderson3/lockdown/raw/master/downloads/LockdownReady-mac.zip)
+- [Windows](https://github.com/davidanderson3/lockdown/raw/master/downloads/LockdownReady-windows.zip)
 
 ## Platforms
 

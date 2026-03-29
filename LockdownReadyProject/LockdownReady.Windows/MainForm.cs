@@ -39,6 +39,7 @@ internal sealed class MainForm : Form
     private readonly Button _saveButton = new();
     private readonly Button _quitButton = new();
     private readonly System.Windows.Forms.Timer _saveStatusTimer = new();
+    private TableLayoutPanel? _rootScrollPanel;
 
     private LockdownConfig _config;
     private DateTimeOffset? _manualLockUntil;
@@ -59,6 +60,7 @@ internal sealed class MainForm : Form
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
+        ScrollToTop();
         if (IsLockdownActive())
         {
             HideToTray(showNotice: false);
@@ -344,6 +346,7 @@ internal sealed class MainForm : Form
         root.RowStyles.Clear();
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.Controls.Add(card, 0, 0);
+        _rootScrollPanel = root;
 
         Controls.Add(root);
     }
@@ -555,6 +558,7 @@ internal sealed class MainForm : Form
         Show();
         WindowState = FormWindowState.Normal;
         Activate();
+        ScrollToTop();
         _notifyIcon.Visible = false;
         _hideNoticeShown = false;
     }
@@ -571,6 +575,16 @@ internal sealed class MainForm : Form
             ShowBalloonTip("Lockdown Ready", "Window hidden. Lockdown Ready is still running in the tray.");
             _hideNoticeShown = true;
         }
+    }
+
+    private void ScrollToTop()
+    {
+        if (_rootScrollPanel is null)
+        {
+            return;
+        }
+
+        _rootScrollPanel.AutoScrollPosition = new Point(0, 0);
     }
 
     private bool TryBuildConfigFromEditor(out LockdownConfig config, out string error)

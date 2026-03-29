@@ -721,6 +721,8 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
     private var manualLockUntil: Date?
     private var hasLockedInCurrentWindow = false
     private var mainWindow: NSWindow?
+    private var mainScrollView: NSScrollView?
+    private var mainDocumentView: NSView?
     private var settingsEditor: LockdownSettingsEditorView?
     private var statusItem: NSStatusItem?
     private let stateLabel = NSTextField(labelWithString: "")
@@ -885,6 +887,7 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         let documentView = NSView()
         documentView.translatesAutoresizingMaskIntoConstraints = false
         documentView.addSubview(heroCard)
+        mainDocumentView = documentView
 
         let scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -893,6 +896,7 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.documentView = documentView
+        mainScrollView = scrollView
 
         backgroundView.addSubview(scrollView)
         window.contentView = backgroundView
@@ -926,6 +930,7 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         ])
 
         rebuildMenu()
+        scrollMainWindowToTop()
     }
 
     private func showMainWindow() {
@@ -940,6 +945,7 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
 
         NSApp.activate(ignoringOtherApps: true)
         mainWindow?.makeKeyAndOrderFront(nil)
+        scrollMainWindowToTop()
         removeStatusItem()
     }
 
@@ -1244,6 +1250,20 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
 
     @objc private func quitApp() {
         NSApplication.shared.terminate(nil)
+    }
+
+    private func scrollMainWindowToTop() {
+        guard let scrollView = mainScrollView, let documentView = mainDocumentView else {
+            return
+        }
+
+        documentView.layoutSubtreeIfNeeded()
+        scrollView.layoutSubtreeIfNeeded()
+
+        let visibleHeight = scrollView.contentView.bounds.height
+        let maxYOffset = max(0, documentView.bounds.height - visibleHeight)
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: maxYOffset))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
     private func showSaveSuccessMessage() {
