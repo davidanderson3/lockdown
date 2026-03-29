@@ -577,6 +577,24 @@ final class ScheduleEditorView: NSView {
         previewLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         previewLabel.textColor = uiTextColor
 
+        let legendSwatch = NSView(frame: NSRect(x: 0, y: 0, width: 14, height: 14))
+        legendSwatch.translatesAutoresizingMaskIntoConstraints = false
+        legendSwatch.wantsLayer = true
+        legendSwatch.layer?.cornerRadius = 3
+        legendSwatch.layer?.backgroundColor = NSColor(calibratedRed: 0.37, green: 0.58, blue: 0.9, alpha: 0.88).cgColor
+        legendSwatch.layer?.borderWidth = 1
+        legendSwatch.layer?.borderColor = uiBorderColor.cgColor
+
+        let legendLabel = NSTextField(labelWithString: "Blue = locked")
+        legendLabel.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        legendLabel.textColor = uiTextColor
+
+        let previewHeader = NSStackView(views: [previewLabel, legendSwatch, legendLabel])
+        previewHeader.orientation = .horizontal
+        previewHeader.alignment = .centerY
+        previewHeader.spacing = 8
+        previewHeader.translatesAutoresizingMaskIntoConstraints = false
+
         previewView.translatesAutoresizingMaskIntoConstraints = false
 
         rowsStack.orientation = .vertical
@@ -588,7 +606,7 @@ final class ScheduleEditorView: NSView {
         addButton.action = #selector(addScheduleRowAction)
         styleNeutralButton(addButton, fillColor: uiSaveButtonColor)
 
-        let rootStack = NSStackView(views: [titleLabel, helpLabel, summaryLabel, previewLabel, previewView, rowsStack, addButton])
+        let rootStack = NSStackView(views: [titleLabel, helpLabel, summaryLabel, previewHeader, previewView, rowsStack, addButton])
         rootStack.orientation = .vertical
         rootStack.alignment = .leading
         rootStack.spacing = 12
@@ -603,8 +621,11 @@ final class ScheduleEditorView: NSView {
             rootStack.topAnchor.constraint(equalTo: topAnchor),
             rootStack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
             rowsStack.widthAnchor.constraint(equalTo: rootStack.widthAnchor),
+            previewHeader.widthAnchor.constraint(equalTo: rootStack.widthAnchor),
             previewView.widthAnchor.constraint(equalTo: rootStack.widthAnchor),
-            previewView.heightAnchor.constraint(equalToConstant: 210)
+            previewView.heightAnchor.constraint(equalToConstant: 210),
+            legendSwatch.widthAnchor.constraint(equalToConstant: 14),
+            legendSwatch.heightAnchor.constraint(equalToConstant: 14)
         ])
     }
 
@@ -696,6 +717,7 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
     private let appName = "Lockdown Ready"
     private let manualLockDuration: TimeInterval = 30 * 60
     private var timer: Timer?
+    private var saveFeedbackTimer: Timer?
     private var manualLockUntil: Date?
     private var hasLockedInCurrentWindow = false
     private var mainWindow: NSWindow?
@@ -703,6 +725,7 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
     private var statusItem: NSStatusItem?
     private let stateLabel = NSTextField(labelWithString: "")
     private let detailLabel = NSTextField(wrappingLabelWithString: "")
+    private let saveStatusLabel = NSTextField(labelWithString: "")
 
     private lazy var configURL: URL = {
         let fm = FileManager.default
@@ -789,6 +812,9 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         detailLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
         detailLabel.textColor = uiTextColor
         detailLabel.maximumNumberOfLines = 5
+        saveStatusLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        saveStatusLabel.textColor = NSColor(calibratedRed: 0.05, green: 0.45, blue: 0.19, alpha: 1.0)
+        saveStatusLabel.isHidden = true
 
         let startButton = makeActionButton(
             title: "Start Lockdown (30 Minutes)",
@@ -808,7 +834,25 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
             fillColor: uiQuitButtonColor
         )
 
-        let heroStack = NSStackView(views: [titleLabel, subtitleLabel, stateLabel, detailLabel])
+        let bottomStartButton = makeActionButton(
+            title: "Start Lockdown (30 Minutes)",
+            action: #selector(startManualLockdown),
+            fillColor: uiStartButtonColor
+        )
+
+        let bottomSaveButton = makeActionButton(
+            title: "Save Settings",
+            action: #selector(saveSettings),
+            fillColor: uiSaveButtonColor
+        )
+
+        let bottomQuitButton = makeActionButton(
+            title: "Quit",
+            action: #selector(quitApp),
+            fillColor: uiQuitButtonColor
+        )
+
+        let heroStack = NSStackView(views: [titleLabel, subtitleLabel, stateLabel, detailLabel, saveStatusLabel])
         heroStack.orientation = .vertical
         heroStack.alignment = .leading
         heroStack.spacing = 12
@@ -821,6 +865,13 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         primaryActions.spacing = 12
         primaryActions.translatesAutoresizingMaskIntoConstraints = false
 
+        let secondaryActions = NSStackView(views: [bottomStartButton, bottomSaveButton, bottomQuitButton])
+        secondaryActions.orientation = .horizontal
+        secondaryActions.alignment = .centerY
+        secondaryActions.distribution = .fillEqually
+        secondaryActions.spacing = 12
+        secondaryActions.translatesAutoresizingMaskIntoConstraints = false
+
         let heroCard = makeCard(backgroundColor: uiCardColor)
         heroCard.addSubview(heroStack)
         heroCard.addSubview(primaryActions)
@@ -829,6 +880,7 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         self.settingsEditor = settingsEditor
         settingsEditor.translatesAutoresizingMaskIntoConstraints = false
         heroCard.addSubview(settingsEditor)
+        heroCard.addSubview(secondaryActions)
 
         let documentView = NSView()
         documentView.translatesAutoresizingMaskIntoConstraints = false
@@ -867,7 +919,10 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
             settingsEditor.leadingAnchor.constraint(equalTo: heroCard.leadingAnchor, constant: 22),
             settingsEditor.trailingAnchor.constraint(equalTo: heroCard.trailingAnchor, constant: -22),
             settingsEditor.topAnchor.constraint(equalTo: primaryActions.bottomAnchor, constant: 18),
-            settingsEditor.bottomAnchor.constraint(equalTo: heroCard.bottomAnchor, constant: -22)
+            secondaryActions.leadingAnchor.constraint(equalTo: heroCard.leadingAnchor, constant: 22),
+            secondaryActions.trailingAnchor.constraint(equalTo: heroCard.trailingAnchor, constant: -22),
+            secondaryActions.topAnchor.constraint(equalTo: settingsEditor.bottomAnchor, constant: 18),
+            secondaryActions.bottomAnchor.constraint(equalTo: heroCard.bottomAnchor, constant: -22)
         ])
 
         rebuildMenu()
@@ -1167,6 +1222,7 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
             saveConfig(config)
             startScheduler()
             runEnforcementCycle(trigger: "config-update")
+            showSaveSuccessMessage()
             notify(title: appName, body: "Lockdown settings updated.")
             rebuildMenu()
         } catch {
@@ -1188,6 +1244,19 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
 
     @objc private func quitApp() {
         NSApplication.shared.terminate(nil)
+    }
+
+    private func showSaveSuccessMessage() {
+        saveFeedbackTimer?.invalidate()
+        saveStatusLabel.stringValue = "Settings saved successfully."
+        saveStatusLabel.isHidden = false
+        saveFeedbackTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { [weak self] _ in
+            self?.saveStatusLabel.stringValue = ""
+            self?.saveStatusLabel.isHidden = true
+        }
+        if let saveFeedbackTimer {
+            RunLoop.main.add(saveFeedbackTimer, forMode: .common)
+        }
     }
 
     private func run(_ launchPath: String, _ args: [String]) {

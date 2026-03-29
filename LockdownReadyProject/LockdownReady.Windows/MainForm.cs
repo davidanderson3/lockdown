@@ -9,6 +9,13 @@ namespace LockdownReady.Windows;
 internal sealed class MainForm : Form
 {
     private const int ManualLockMinutes = 30;
+    private static readonly Color WindowBackgroundColor = Color.FromArgb(237, 242, 252);
+    private static readonly Color CardColor = Color.FromArgb(252, 247, 235);
+    private static readonly Color PanelTintColor = Color.FromArgb(247, 249, 255);
+    private static readonly Color BorderColor = Color.FromArgb(181, 199, 224);
+    private static readonly Color StartButtonColor = Color.FromArgb(252, 204, 189);
+    private static readonly Color SaveButtonColor = Color.FromArgb(204, 237, 214);
+    private static readonly Color QuitButtonColor = Color.FromArgb(217, 224, 242);
     private static readonly string[] TimeFormats =
     {
         "H:mm",
@@ -24,12 +31,14 @@ internal sealed class MainForm : Form
     private readonly NotifyIcon _notifyIcon = new();
     private readonly Label _stateLabel = new();
     private readonly Label _detailLabel = new();
+    private readonly Label _saveStatusLabel = new();
     private readonly Label _scheduleSummaryLabel = new();
     private readonly DataGridView _scheduleGrid = new();
     private readonly SchedulePreviewPanel _schedulePreview = new();
     private readonly Button _startButton = new();
     private readonly Button _saveButton = new();
     private readonly Button _quitButton = new();
+    private readonly System.Windows.Forms.Timer _saveStatusTimer = new();
 
     private LockdownConfig _config;
     private DateTimeOffset? _manualLockUntil;
@@ -88,6 +97,7 @@ internal sealed class MainForm : Form
         MinimumSize = new Size(900, 720);
         StartPosition = FormStartPosition.CenterScreen;
         Size = new Size(1060, 780);
+        BackColor = WindowBackgroundColor;
 
         _timer.Tick += (_, _) => RunEnforcementCycle("timer");
 
@@ -97,21 +107,45 @@ internal sealed class MainForm : Form
 
         _stateLabel.AutoSize = true;
         _stateLabel.Font = new Font(Font, FontStyle.Bold);
-        _stateLabel.Font = new Font(_stateLabel.Font.FontFamily, 20, FontStyle.Bold);
+        _stateLabel.Font = new Font(_stateLabel.Font.FontFamily, 22, FontStyle.Bold);
 
         _detailLabel.AutoSize = true;
         _detailLabel.MaximumSize = new Size(980, 0);
         _detailLabel.ForeColor = Color.DimGray;
 
+        _saveStatusLabel.AutoSize = true;
+        _saveStatusLabel.ForeColor = Color.FromArgb(28, 112, 53);
+        _saveStatusLabel.Font = new Font(Font, FontStyle.Bold);
+        _saveStatusLabel.Visible = false;
+
         _scheduleSummaryLabel.AutoSize = true;
         _scheduleSummaryLabel.ForeColor = Color.DimGray;
         _scheduleSummaryLabel.MaximumSize = new Size(980, 0);
+        _scheduleSummaryLabel.Margin = new Padding(0, 4, 0, 0);
+
+        _saveStatusTimer.Interval = 3000;
+        _saveStatusTimer.Tick += (_, _) =>
+        {
+            _saveStatusTimer.Stop();
+            _saveStatusLabel.Visible = false;
+            _saveStatusLabel.Text = string.Empty;
+        };
 
         _scheduleGrid.Dock = DockStyle.Fill;
         _scheduleGrid.AllowUserToResizeRows = false;
         _scheduleGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
         _scheduleGrid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
         _scheduleGrid.RowHeadersVisible = false;
+        _scheduleGrid.BackgroundColor = PanelTintColor;
+        _scheduleGrid.BorderStyle = BorderStyle.FixedSingle;
+        _scheduleGrid.EnableHeadersVisualStyles = false;
+        _scheduleGrid.GridColor = BorderColor;
+        _scheduleGrid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(226, 235, 251);
+        _scheduleGrid.ColumnHeadersDefaultCellStyle.ForeColor = Color.Black;
+        _scheduleGrid.DefaultCellStyle.BackColor = Color.White;
+        _scheduleGrid.DefaultCellStyle.ForeColor = Color.Black;
+        _scheduleGrid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(196, 218, 247);
+        _scheduleGrid.DefaultCellStyle.SelectionForeColor = Color.Black;
         _scheduleGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Days", Name = "Days" });
         _scheduleGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Start", Name = "Start" });
         _scheduleGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "End", Name = "End" });
@@ -126,22 +160,30 @@ internal sealed class MainForm : Form
         _schedulePreview.Height = 220;
 
         _startButton.Text = "Start Lockdown (30 Minutes)";
-        _startButton.AutoSize = true;
         _startButton.Click += (_, _) => StartManualLockdown();
+        StyleActionButton(_startButton, StartButtonColor);
 
         _saveButton.Text = "Save Settings";
-        _saveButton.AutoSize = true;
         _saveButton.Click += (_, _) => SaveSettings();
+        StyleActionButton(_saveButton, SaveButtonColor);
 
         _quitButton.Text = "Quit";
-        _quitButton.AutoSize = true;
         _quitButton.Click += (_, _) => QuitApplication();
+        StyleActionButton(_quitButton, QuitButtonColor);
+
+        var titleLabel = new Label
+        {
+            AutoSize = true,
+            Font = new Font(Font.FontFamily, 28, FontStyle.Bold),
+            Text = "Lockdown Ready"
+        };
 
         var introLabel = new Label
         {
             AutoSize = true,
             ForeColor = Color.DimGray,
-            Text = "Lock your Windows machine when you need a real break. Use the tray icon to keep the app running after this window closes."
+            MaximumSize = new Size(980, 0),
+            Text = "Lock your Windows machine when you need a real break. Start a quick timeout, or set recurring windows so screen-time boundaries happen automatically."
         };
 
         var scheduleLabel = new Label
@@ -165,12 +207,41 @@ internal sealed class MainForm : Form
             Text = "Blocked Time Preview"
         };
 
+        var previewLegendSwatch = new Panel
+        {
+            Size = new Size(14, 14),
+            BackColor = Color.FromArgb(190, 68, 122, 224),
+            Margin = new Padding(12, 3, 0, 0)
+        };
+
+        var previewLegendLabel = new Label
+        {
+            AutoSize = true,
+            ForeColor = Color.DimGray,
+            Text = "Blue = locked",
+            Margin = new Padding(6, 1, 0, 0)
+        };
+
+        var previewHeaderPanel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = new Padding(0)
+        };
+        previewHeaderPanel.Controls.AddRange(new Control[]
+        {
+            schedulePreviewLabel,
+            previewLegendSwatch,
+            previewLegendLabel
+        });
+
         var buttonPanel = new FlowLayoutPanel
         {
             AutoSize = true,
-            Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = true
+            WrapContents = true,
+            Margin = new Padding(0, 6, 0, 0)
         };
         buttonPanel.Controls.AddRange(new Control[]
         {
@@ -179,30 +250,48 @@ internal sealed class MainForm : Form
             _quitButton
         });
 
-        var root = new TableLayoutPanel
+        var bottomStartButton = new Button
         {
-            Dock = DockStyle.Fill,
-            AutoScroll = true,
-            ColumnCount = 1,
-            Padding = new Padding(18)
+            Text = "Start Lockdown (30 Minutes)"
         };
-        root.RowStyles.Clear();
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        bottomStartButton.Click += (_, _) => StartManualLockdown();
+        StyleActionButton(bottomStartButton, StartButtonColor);
 
-        root.Controls.Add(_stateLabel, 0, 0);
-        root.Controls.Add(_detailLabel, 0, 1);
-        root.Controls.Add(introLabel, 0, 2);
+        var bottomSaveButton = new Button
+        {
+            Text = "Save Settings"
+        };
+        bottomSaveButton.Click += (_, _) => SaveSettings();
+        StyleActionButton(bottomSaveButton, SaveButtonColor);
+
+        var bottomQuitButton = new Button
+        {
+            Text = "Quit"
+        };
+        bottomQuitButton.Click += (_, _) => QuitApplication();
+        StyleActionButton(bottomQuitButton, QuitButtonColor);
+
+        var bottomButtonPanel = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Margin = new Padding(0, 18, 0, 0)
+        };
+        bottomButtonPanel.Controls.AddRange(new Control[]
+        {
+            bottomStartButton,
+            bottomSaveButton,
+            bottomQuitButton
+        });
 
         var schedulePanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 5,
-            AutoSize = true
+            RowCount = 6,
+            AutoSize = true,
+            Margin = new Padding(0, 18, 0, 0)
         };
         schedulePanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         schedulePanel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -214,11 +303,47 @@ internal sealed class MainForm : Form
         schedulePanel.Controls.Add(scheduleHelp, 0, 1);
         schedulePanel.Controls.Add(_scheduleGrid, 0, 2);
         schedulePanel.Controls.Add(_scheduleSummaryLabel, 0, 3);
-        schedulePanel.Controls.Add(schedulePreviewLabel, 0, 4);
+        schedulePanel.Controls.Add(previewHeaderPanel, 0, 4);
         schedulePanel.Controls.Add(_schedulePreview, 0, 5);
-        root.Controls.Add(schedulePanel, 0, 3);
 
-        root.Controls.Add(buttonPanel, 0, 4);
+        var card = new TableLayoutPanel
+        {
+            AutoSize = true,
+            ColumnCount = 1,
+            Dock = DockStyle.Top,
+            Padding = new Padding(22),
+            BackColor = CardColor,
+            Margin = new Padding(0)
+        };
+        card.RowStyles.Clear();
+        card.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        card.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        card.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        card.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        card.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        card.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        card.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        card.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        card.Controls.Add(titleLabel, 0, 0);
+        card.Controls.Add(introLabel, 0, 1);
+        card.Controls.Add(_stateLabel, 0, 2);
+        card.Controls.Add(_detailLabel, 0, 3);
+        card.Controls.Add(buttonPanel, 0, 4);
+        card.Controls.Add(_saveStatusLabel, 0, 5);
+        card.Controls.Add(schedulePanel, 0, 6);
+        card.Controls.Add(bottomButtonPanel, 0, 7);
+
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoScroll = true,
+            ColumnCount = 1,
+            Padding = new Padding(22),
+            BackColor = WindowBackgroundColor
+        };
+        root.RowStyles.Clear();
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.Controls.Add(card, 0, 0);
 
         Controls.Add(root);
     }
@@ -250,6 +375,7 @@ internal sealed class MainForm : Form
         _configStore.Save(_config);
         StartScheduler();
         RunEnforcementCycle("config-update");
+        ShowSaveSuccessMessage();
         ShowBalloonTip("Lockdown Ready", "Lockdown settings updated.");
     }
 
@@ -313,6 +439,14 @@ internal sealed class MainForm : Form
         _timer.Start();
     }
 
+    private void ShowSaveSuccessMessage()
+    {
+        _saveStatusTimer.Stop();
+        _saveStatusLabel.Text = "Settings saved successfully.";
+        _saveStatusLabel.Visible = true;
+        _saveStatusTimer.Start();
+    }
+
     private void RunEnforcementCycle(string trigger)
     {
         var now = DateTimeOffset.Now;
@@ -352,6 +486,7 @@ internal sealed class MainForm : Form
         var stateText = BuildStateText(now, out var detailText, out var stateColor);
 
         _stateLabel.Text = stateText;
+        _stateLabel.Visible = !string.IsNullOrWhiteSpace(stateText);
         _stateLabel.ForeColor = stateColor;
         _detailLabel.Text = detailText;
 
@@ -381,7 +516,7 @@ internal sealed class MainForm : Form
 
         color = Color.RoyalBlue;
         detailText = "Closing this window does not stop enforcement.";
-        return "LOCKDOWN READY";
+        return string.Empty;
     }
 
     private void UpdateTrayMenu(DateTimeOffset now)
@@ -883,6 +1018,21 @@ internal sealed class MainForm : Form
             || normalized.Contains("wifi")
             || normalized.Contains("wireless")
             || normalized.Contains("wlan");
+    }
+
+    private void StyleActionButton(Button button, Color backColor)
+    {
+        button.AutoSize = true;
+        button.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        button.FlatStyle = FlatStyle.Flat;
+        button.FlatAppearance.BorderSize = 1;
+        button.FlatAppearance.BorderColor = BorderColor;
+        button.BackColor = backColor;
+        button.ForeColor = Color.Black;
+        button.Font = new Font(Font.FontFamily, 10, FontStyle.Bold);
+        button.Padding = new Padding(14, 8, 14, 8);
+        button.Margin = new Padding(0, 0, 12, 0);
+        button.UseVisualStyleBackColor = false;
     }
 
     private void ShowBalloonTip(string title, string text)
