@@ -99,11 +99,6 @@ The Windows app still works without admin rights for scheduling, config manageme
 
 ## Settings
 
-Both apps store their config as JSON and use the same top-level fields:
-
-- `blockWindows`
-- `checkIntervalSeconds`
-
 macOS config path:
 
 ```text
