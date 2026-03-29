@@ -4,6 +4,11 @@ Lockdown Ready is a desktop app for forcing a real break from screen time.
 
 The idea is simple: when you decide it is time to step away, Lockdown Ready can shut down the usual distractions, lock the machine, and make it inconvenient to drift back into browsing, messaging, or coding "for just a minute."
 
+## Downloads
+
+- [macOS](https://github.com/your-org/your-repo/releases/latest/download/LockdownReady-mac.zip)
+- [Windows](https://github.com/your-org/your-repo/releases/latest/download/LockdownReady-win.exe)
+
 ## Platforms
 
 - macOS app in `LockdownReadyProject/LockdownReadyApp`
