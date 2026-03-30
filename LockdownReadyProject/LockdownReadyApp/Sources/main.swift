@@ -163,20 +163,17 @@ struct SettingsEditorValidationError: LocalizedError {
 
 struct LockdownConfig: Codable {
     var blockWindows: [TimeWindow]
-    var distractingApps: [String]
     var checkIntervalSeconds: TimeInterval
 
     enum CodingKeys: String, CodingKey {
         case blockWindows
         case blockStartHour
         case blockEndHour
-        case distractingApps
         case checkIntervalSeconds
     }
 
-    init(blockWindows: [TimeWindow], distractingApps: [String], checkIntervalSeconds: TimeInterval) {
+    init(blockWindows: [TimeWindow], checkIntervalSeconds: TimeInterval) {
         self.blockWindows = blockWindows
-        self.distractingApps = distractingApps
         self.checkIntervalSeconds = checkIntervalSeconds
     }
 
@@ -191,36 +188,18 @@ struct LockdownConfig: Codable {
             blockWindows = [TimeWindow.fromHours(startHour: start, endHour: end)]
         }
 
-        distractingApps = try container.decodeIfPresent([String].self, forKey: .distractingApps) ?? LockdownConfig.default.distractingApps
         checkIntervalSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .checkIntervalSeconds) ?? LockdownConfig.default.checkIntervalSeconds
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(blockWindows, forKey: .blockWindows)
-        try container.encode(distractingApps, forKey: .distractingApps)
         try container.encode(checkIntervalSeconds, forKey: .checkIntervalSeconds)
     }
 
     static let `default` = LockdownConfig(
         blockWindows: [
             TimeWindow.fromHours(startHour: 21, endHour: 8)
-        ],
-        distractingApps: [
-            "Safari",
-            "Google Chrome",
-            "Firefox",
-            "Brave Browser",
-            "Arc",
-            "Microsoft Edge",
-            "Slack",
-            "Discord",
-            "Messages",
-            "Mail",
-            "Xcode",
-            "Steam",
-            "Spotify",
-            "Bluestacks"
         ],
         checkIntervalSeconds: 60
     )
@@ -672,12 +651,10 @@ final class ScheduleEditorView: NSView {
 
 final class LockdownSettingsEditorView: NSView {
     private let scheduleEditor: ScheduleEditorView
-    private let distractingApps: [String]
     private let checkIntervalSeconds: TimeInterval
 
     init(config: LockdownConfig) {
         scheduleEditor = ScheduleEditorView(windows: config.blockWindows)
-        distractingApps = config.distractingApps
         checkIntervalSeconds = config.checkIntervalSeconds
         super.init(frame: NSRect(x: 0, y: 0, width: 700, height: 640))
         buildUI()
@@ -693,7 +670,6 @@ final class LockdownSettingsEditorView: NSView {
 
         return LockdownConfig(
             blockWindows: windows,
-            distractingApps: distractingApps,
             checkIntervalSeconds: checkIntervalSeconds
         )
     }
@@ -1187,7 +1163,6 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
         }
 
         disableWiFi()
-        quitApps()
         mainWindow?.orderOut(nil)
         ensureStatusItem()
         updateStatusItem(now: now)
@@ -1354,13 +1329,6 @@ final class LockdownController: NSObject, NSApplicationDelegate, UNUserNotificat
             run(cgSession, ["-suspend"])
         } else {
             run("/usr/bin/pmset", ["displaysleepnow"])
-        }
-    }
-
-    private func quitApps() {
-        for app in config.distractingApps {
-            let escaped = app.replacingOccurrences(of: "\"", with: "\\\"")
-            run("/usr/bin/osascript", ["-e", "tell application \"\(escaped)\" to quit"])
         }
     }
 

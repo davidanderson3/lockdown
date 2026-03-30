@@ -465,7 +465,6 @@ internal sealed class MainForm : Form
         }
 
         DisableWiFi();
-        QuitApps();
         HideToTray(showNotice: trigger == "startup" || trigger == "manual-start");
 
         if (!_hasLockedInCurrentWindow || string.Equals(trigger, "manual-start", StringComparison.Ordinal))
@@ -647,7 +646,6 @@ internal sealed class MainForm : Form
         config = new LockdownConfig
         {
             BlockWindows = windows,
-            DistractingApps = new List<string>(_config.DistractingApps),
             CheckIntervalSeconds = _config.CheckIntervalSeconds
         };
         error = string.Empty;
@@ -934,96 +932,6 @@ internal sealed class MainForm : Form
         }
 
         return names;
-    }
-
-    private void QuitApps()
-    {
-        foreach (var process in Process.GetProcesses())
-        {
-            try
-            {
-                if (!MatchesBlockedApp(process))
-                {
-                    continue;
-                }
-
-                if (!process.CloseMainWindow())
-                {
-                    continue;
-                }
-            }
-            catch
-            {
-            }
-        }
-    }
-
-    private bool MatchesBlockedApp(Process process)
-    {
-        foreach (var appName in _config.DistractingApps)
-        {
-            foreach (var candidate in ExpandAliases(appName))
-            {
-                if (string.IsNullOrWhiteSpace(candidate))
-                {
-                    continue;
-                }
-
-                var normalizedProcessName = NormalizeToken(process.ProcessName);
-                if (string.Equals(normalizedProcessName, candidate, StringComparison.Ordinal))
-                {
-                    return true;
-                }
-
-                var windowTitle = NormalizeToken(process.MainWindowTitle);
-                if (!string.IsNullOrWhiteSpace(windowTitle) && windowTitle.Contains(candidate, StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private static IEnumerable<string> ExpandAliases(string appName)
-    {
-        var normalized = NormalizeToken(appName);
-        if (string.IsNullOrWhiteSpace(normalized))
-        {
-            yield break;
-        }
-
-        yield return normalized;
-
-        switch (normalized)
-        {
-            case "googlechrome":
-                yield return "chrome";
-                break;
-            case "microsoftedge":
-            case "edge":
-                yield return "msedge";
-                break;
-            case "visualstudiocode":
-                yield return "code";
-                break;
-            case "mail":
-            case "outlook":
-                yield return "outlook";
-                break;
-        }
-    }
-
-    private static string NormalizeToken(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return string.Empty;
-        }
-
-        var normalized = Regex.Replace(value, "[^a-z0-9]", string.Empty, RegexOptions.IgnoreCase).ToLowerInvariant();
-        return normalized.EndsWith("exe", StringComparison.Ordinal) ? normalized[..^3] : normalized;
     }
 
     private static bool LooksLikeWifiInterface(string name)

@@ -60,21 +60,6 @@ internal sealed class ConfigStore
             config.BlockWindows = windows;
         }
 
-        if (root.TryGetProperty("distractingApps", out var appsElement) && appsElement.ValueKind == JsonValueKind.Array)
-        {
-            var apps = appsElement.EnumerateArray()
-                .Where(item => item.ValueKind == JsonValueKind.String)
-                .Select(item => item.GetString()?.Trim())
-                .Where(item => !string.IsNullOrWhiteSpace(item))
-                .Cast<string>()
-                .ToList();
-
-            if (apps.Count > 0)
-            {
-                config.DistractingApps = apps;
-            }
-        }
-
         if (root.TryGetProperty("checkIntervalSeconds", out var intervalElement)
             && intervalElement.ValueKind == JsonValueKind.Number
             && intervalElement.TryGetDouble(out var intervalSeconds))

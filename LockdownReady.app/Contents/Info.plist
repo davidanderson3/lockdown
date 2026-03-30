@@ -20,8 +20,6 @@
   <string>APPL</string>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
-  <key>NSAppleEventsUsageDescription</key>
-  <string>Lockdown Ready needs Apple Events access to quit distracting apps during locked hours.</string>
   <key>NSUserNotificationUsageDescription</key>
   <string>Lockdown Ready shows status notifications when lockdown is enforced.</string>
 </dict>
